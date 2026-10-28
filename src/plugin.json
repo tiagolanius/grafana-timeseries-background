@@ -1,0 +1,18 @@
+{
+  "type": "panel",
+  "name": "Time Series Background",
+  "id": "dfsolutions-timeseries-bg",
+  "info": {
+    "description": "Time-series chart with a configurable PNG background.",
+    "author": {
+      "name": "DFSolutions"
+    },
+    "keywords": ["panel", "timeseries", "background"],
+    "version": "1.0.0",
+    "updated": "2026-10-28"
+  },
+  "dependencies": {
+    "grafanaVersion": "8.1.2",
+    "plugins": []
+  }
+}
