@@ -1,307 +1,167 @@
-# Manual de instalação — Time Series Background no Grafana
+# Manual de instalação — Time Series Background
 
-**Plugin:** Time Series Background  
-**ID:** `dfsolutions-timeseries-bg`  
-**Repositório:** https://github.com/tiagolanius/grafana-timeseries-background  
-**Ambiente de referência:** Grafana 8.1.2 em Docker  
-**Método:** instalação manual utilizando os arquivos compilados da pasta `dist`.
+**Plugin:** `dfsolutions-timeseries-bg`  
+**Desenvolvedor:** DFSolutions  
+**Compatibilidade:** Grafana 8.1.2 ou compatível
 
----
+## 1. Requisitos
 
-## 1. Objetivo
+- Grafana 8.1.2 ou compatível.
+- Acesso administrativo ao servidor.
+- Permissão para carregar plugins não assinados.
 
-Este procedimento permite instalar o plugin Time Series Background em outros servidores Grafana, sem precisar compilar novamente o projeto.
+## 2. Baixar o plugin
 
-O procedimento foi validado no container `grafana-netprime`.
+No servidor do Grafana, execute:
 
-**Importante:** os comandos abaixo são para Grafana executado em Docker, com os arquivos de configuração e plugins nos caminhos encontrados no ambiente de referência. Em outras instalações, confirme os caminhos e os volumes antes de executar.
+```bash
+cd /tmp
+git clone https://github.com/tiagolanius/grafana-timeseries-background.git
+```
 
-## 2. Identificar o container Grafana
+Os arquivos compilados estarão em:
 
-No servidor Docker, liste os containers:
+```text
+/tmp/grafana-timeseries-background/dist/
+```
+
+Não é necessário instalar Node.js nem compilar o plugin para realizar a instalação.
+
+## 3. Identificar o container Grafana
 
 ```bash
 docker ps
 ```
 
-Identifique o container do Grafana em que deseja instalar o plugin.
+Identifique o container que receberá o plugin.
 
-Nos próximos comandos, substitua `NOME_DO_CONTAINER` pelo nome correto.
+Nos comandos seguintes, substitua `NOME_CONTAINER` pelo nome correto.
 
-Exemplo:
-
-```bash
-NOME_DO_CONTAINER=grafana-netprime
-```
-
-Confira a versão e a imagem:
+## 4. Identificar os volumes
 
 ```bash
-docker inspect $NOME_DO_CONTAINER --format 'Imagem={{.Config.Image}}'
+docker inspect NOME_CONTAINER --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
 ```
 
-Confira os volumes:
-
-```bash
-docker inspect $NOME_DO_CONTAINER --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
-```
-
-No ambiente de referência, o volume de dados estava montado em:
+O diretório padrão dos plugins é:
 
 ```text
-/var/lib/docker/volumes/grafana-storage-812-netprime/_data
-    -> /var/lib/grafana
+/var/lib/grafana/plugins/
 ```
 
-O diretório de plugins utilizado pelo Grafana era:
+Se o diretório `/var/lib/grafana` estiver montado em um volume persistente, os arquivos do plugin também ficarão persistentes.
 
-```text
-/var/lib/grafana/plugins
-```
+## 5. Fazer backup
 
-## 3. Baixar o plugin
-
-Entre no diretório onde deseja manter os arquivos:
+Antes de atualizar uma instalação existente, faça uma cópia do plugin:
 
 ```bash
-cd /root
+docker exec NOME_CONTAINER sh -c \
+'test ! -d /var/lib/grafana/plugins/dfsolutions-timeseries-bg || tar czf /tmp/plugin-backup.tar.gz -C /var/lib/grafana/plugins dfsolutions-timeseries-bg'
 ```
 
-Clone o repositório:
+Se o plugin já existir, copie o backup para o servidor:
 
 ```bash
-git clone https://github.com/tiagolanius/grafana-timeseries-background.git
+docker cp NOME_CONTAINER:/tmp/plugin-backup.tar.gz ./plugin-backup.tar.gz
 ```
 
-Entre no diretório:
+## 6. Instalar o plugin
+
+Crie o diretório, se necessário:
 
 ```bash
-cd grafana-timeseries-background
+docker exec -u 0 NOME_CONTAINER mkdir -p /var/lib/grafana/plugins/dfsolutions-timeseries-bg
 ```
 
-Confira se os arquivos compilados existem:
+Copie os arquivos compilados:
 
 ```bash
-ls -lah dist/
-```
-
-Devem estar presentes, entre outros:
-
-```text
-LICENSE
-module.js
-module.js.map
-plugin.json
-README.md
-```
-
-**Atenção:** utilizamos a pasta `dist`, que contém os arquivos prontos para instalação. Não é necessário executar o processo de compilação novamente quando ela já estiver disponível e atualizada.
-
-## 4. Copiar o plugin para o Grafana
-
-Crie o diretório do plugin dentro do container:
-
-```bash
-docker exec -u 0 NOME_DO_CONTAINER \
-mkdir -p /var/lib/grafana/plugins/dfsolutions-timeseries-bg
-```
-
-Copie o conteúdo da pasta `dist`:
-
-```bash
-docker cp /root/grafana-timeseries-background/dist/. \
-NOME_DO_CONTAINER:/var/lib/grafana/plugins/dfsolutions-timeseries-bg/
+docker cp /tmp/grafana-timeseries-background/dist/. \
+NOME_CONTAINER:/var/lib/grafana/plugins/dfsolutions-timeseries-bg/
 ```
 
 Ajuste as permissões:
 
 ```bash
-docker exec -u 0 NOME_DO_CONTAINER \
+docker exec -u 0 NOME_CONTAINER \
 chown -R 472:472 /var/lib/grafana/plugins/dfsolutions-timeseries-bg
 ```
 
-Confira os arquivos:
+## 7. Autorizar o plugin
 
-```bash
-docker exec NOME_DO_CONTAINER \
-ls -lah /var/lib/grafana/plugins/dfsolutions-timeseries-bg
-```
+O plugin não possui assinatura oficial do Grafana. Por isso, é necessário autorizá-lo.
 
-## 5. Autorizar o carregamento do plugin
-
-O plugin não possui assinatura reconhecida pelo Grafana. Por isso, é necessário autorizar seu carregamento.
-
-Primeiro, confira o usuário e se o sistema de arquivos permite escrita:
-
-```bash
-docker inspect NOME_DO_CONTAINER \
---format 'Usuário={{.Config.User}} | Sistema somente leitura={{.HostConfig.ReadonlyRootfs}}'
-```
-
-Verifique a configuração:
-
-```bash
-docker exec -u 0 NOME_DO_CONTAINER sh -c '
-grep -n -A8 -B2 "^\[plugins\]" /etc/grafana/grafana.ini
-test -w /etc/grafana/grafana.ini && echo "CONFIGURACAO GRAVAVEL" || echo "CONFIGURACAO NAO GRAVAVEL"
-'
-```
-
-Se o arquivo for gravável, faça um backup:
-
-```bash
-docker exec -u 0 NOME_DO_CONTAINER \
-cp -p /etc/grafana/grafana.ini /etc/grafana/grafana.ini.bak
-```
-
-Localize a opção:
+Na configuração do Grafana, adicione:
 
 ```ini
-;allow_loading_unsigned_plugins =
-```
-
-Altere para:
-
-```ini
+[plugins]
 allow_loading_unsigned_plugins = dfsolutions-timeseries-bg
 ```
 
-Comando utilizado no ambiente de referência:
+**Importante:** se já existirem outros plugins não assinados autorizados, preserve todos os IDs na mesma linha, separados por vírgulas.
 
-```bash
-docker exec -u 0 NOME_DO_CONTAINER sh -c '
-sed -i "s/^;allow_loading_unsigned_plugins =.*/allow_loading_unsigned_plugins = dfsolutions-timeseries-bg/" /etc/grafana/grafana.ini
-grep -n -A4 "^\[plugins\]" /etc/grafana/grafana.ini
-'
-```
-
-### Atenção aos outros plugins
-
-Antes de alterar essa opção, confira se já existem outros plugins não assinados autorizados.
-
-No ambiente de referência, já existia:
-
-```text
-btplc-alarm-box-panel
-```
-
-Por isso, a configuração final ficou:
+Exemplo:
 
 ```ini
 [plugins]
 allow_loading_unsigned_plugins = btplc-alarm-box-panel,dfsolutions-timeseries-bg
 ```
 
-**Não substitua uma lista existente sem preservar os IDs dos outros plugins.** Mantenha todos os identificadores já autorizados e acrescente `dfsolutions-timeseries-bg`, separados por vírgula.
+Não substitua a lista existente sem verificar os demais plugins instalados.
 
-Se o arquivo não permitir escrita ou se a configuração estiver em outro local, interrompa o procedimento e identifique como aquela instalação gerencia suas configurações. Não recrie o container automaticamente.
-
-## 6. Reiniciar somente o Grafana
-
-Após confirmar que os arquivos e a configuração estão corretos, reinicie apenas o container escolhido:
+## 8. Reiniciar o Grafana
 
 ```bash
-docker restart NOME_DO_CONTAINER
+docker restart NOME_CONTAINER
 ```
 
-A reinicialização provoca uma breve indisponibilidade daquele Grafana, mas não reinicia os demais containers.
+Reinicie somente o container no qual o plugin foi instalado.
 
-## 7. Verificar se o plugin foi carregado
-
-Execute:
+## 9. Verificar a instalação
 
 ```bash
-docker logs --since 2m NOME_DO_CONTAINER 2>&1 | \
-grep -Ei 'dfsolutions-timeseries-bg|unsigned|plugin scanning'
+docker logs --since 5m NOME_CONTAINER 2>&1 | \
+grep -iE 'dfsolutions-timeseries-bg|error|failed'
 ```
 
-O resultado esperado é semelhante a:
+O resultado esperado inclui:
 
 ```text
-WARN Running an unsigned plugin pluginID=dfsolutions-timeseries-bg
-INFO Registering plugin id=dfsolutions-timeseries-bg
+Running an unsigned plugin pluginID=dfsolutions-timeseries-bg
+Registering plugin id=dfsolutions-timeseries-bg
 ```
 
-A mensagem `Running an unsigned plugin` é esperada quando o plugin é autorizado pela configuração.
+O aviso de plugin não assinado é esperado.
 
-Também é possível conferir a instalação pelo CLI:
+## 10. Configurar o painel
 
-```bash
-docker exec NOME_DO_CONTAINER grafana-cli plugins ls
-```
+1. Abra o dashboard no Grafana.
+2. Adicione um painel.
+3. Selecione **Time Series Background**.
+4. Configure a URL da imagem PNG.
+5. Ajuste a transparência, posicionamento e dimensionamento.
+6. Salve o dashboard.
 
-O resultado deverá conter:
+### Utilização com variáveis
+
+Exemplo de URL:
 
 ```text
-dfsolutions-timeseries-bg @ 1.0.0
+https://arquivos.dfsolutions.com.br/imagens/$redes.png
 ```
 
-## 8. Conferir pela interface do Grafana
+Se a variável `redes` estiver definida como `FACEBOOK`, será utilizada:
 
-Acesse o Grafana pelo navegador.
-
-1. Entre em **Dashboards**.
-2. Selecione **New Dashboard**.
-3. Clique em **Add visualization**.
-4. Procure por **Time Series Background**.
-5. Selecione o painel para começar a configuração.
-
-Se o plugin aparecer na lista de visualizações, a instalação foi concluída.
-
----
-
-## 9. Como reverter a instalação
-
-Se houver algum problema, é possível remover a alteração de configuração e os arquivos do plugin.
-
-Primeiro, restaure o backup:
-
-```bash
-docker exec -u 0 NOME_DO_CONTAINER sh -c '
-cp -p /etc/grafana/grafana.ini.bak /etc/grafana/grafana.ini
-'
+```text
+https://arquivos.dfsolutions.com.br/imagens/FACEBOOK.png
 ```
 
-Remova somente o diretório desse plugin:
+O plugin utiliza a interpolação de variáveis do próprio painel, respeitando também os valores específicos de cada painel repetido (Repeat Panels).
 
-```bash
-docker exec -u 0 NOME_DO_CONTAINER \
-rm -rf /var/lib/grafana/plugins/dfsolutions-timeseries-bg
-```
+## 11. Atualização
 
-Reinicie o container:
+Para atualizar uma instalação:
 
-```bash
-docker restart NOME_DO_CONTAINER
-```
-
-**Observação:** restaurar o backup também restaura toda a configuração anterior daquele arquivo. Se outras alterações foram feitas nele depois do backup, preserve-as antes de executar a restauração.
-
----
-
-## 10. Checklist para novas instalações
-
-- [ ] Identificar o container correto.
-- [ ] Conferir a imagem e a versão do Grafana.
-- [ ] Conferir o volume persistente e o diretório de plugins.
-- [ ] Baixar ou atualizar o repositório.
-- [ ] Confirmar a existência da pasta `dist`.
-- [ ] Copiar os arquivos para o diretório do plugin.
-- [ ] Ajustar as permissões para UID/GID 472, se aplicável.
-- [ ] Fazer backup do `grafana.ini`.
-- [ ] Autorizar o plugin sem remover outras autorizações.
-- [ ] Reiniciar somente o container escolhido.
-- [ ] Conferir os logs.
-- [ ] Confirmar o plugin na interface.
-
----
-
-## 11. Observações importantes
-
-1. Este procedimento foi validado no Grafana 8.1.2 em Docker.
-2. O funcionamento em outras versões do Grafana deve ser validado antes de aplicar em produção.
-3. Instalações nativas Linux, Kubernetes e containers com configurações externas podem utilizar caminhos e métodos diferentes.
-4. Não é necessário alterar bancos de dados, dashboards, fontes de dados ou outros plugins para realizar esta instalação.
-5. Não é necessário recriar o container quando a configuração pode ser alterada com segurança no ambiente existente.
-6. A autorização de plugins não assinados deve ser limitada aos IDs necessários.
-7. O diretório de plugins precisa estar em armazenamento persistente para que os arquivos não desapareçam quando o container for recriado.
+1. Faça backup da versão atual.
+2. Baixe a versão mais recente do
